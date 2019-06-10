@@ -1,0 +1,11 @@
+id: masking-policy
+name: masking-policy
+description: Mask Fields on Outgoing Response
+category: Custom
+type: custom
+resourceLevelSupported: true
+encryptionSupported: false
+standalone: true
+requiredCharacteristics: []
+providedCharacteristics: []
+configuration: []
