@@ -1,15 +1,103 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xmlns:http-policy="http://www.mulesoft.org/schema/mule/http-policy"
-      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-               http://www.mulesoft.org/schema/mule/http-policy http://www.mulesoft.org/schema/mule/http-policy/current/mule-http-policy.xsd">
+<mule xmlns:core="http://www.mulesoft.org/schema/mule/core"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:http-policy="http://www.mulesoft.org/schema/mule/http-policy"
+	xmlns:http-transform="http://www.mulesoft.org/schema/mule/http-policy-transform" 
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+               http://www.mulesoft.org/schema/mule/http-policy http://www.mulesoft.org/schema/mule/http-policy/current/mule-http-policy.xsd
+               http://www.mulesoft.org/schema/mule/http-policy-transform http://www.mulesoft.org/schema/mule/http-policy-transform/current/mule-http-policy-transform.xsd">
 
 
-    <http-policy:proxy name="{{{policyId}}}-custom-policy">
-        <http-policy:source>
-            <http-policy:execute-next/>  
-            <set-payload value="Hello World!" />  
-        </http-policy:source>
-    </http-policy:proxy>
+	<http-policy:proxy name="{{{policyId}}}-custom-policy">
+		<http-policy:source>
+			<try>
+				<set-variable variableName="maskingSelectorsList"
+					value="{{ maskingSelectorsList }}" mimeType="application/java" />
+				<set-variable variableName="uidList" value="{{ exemptedUsers }}"
+					mimeType="application/java" />
+				<!-- <logger level="INFO" message="#[vars.maskingSelectorsList]" />
+				<logger level="INFO" message="#[vars.uidList]" /> -->
+				<ee:transform>
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="uidList"><![CDATA[%dw 2.0 output application/java 
+				fun removeBrackets(txt) = (txt replace "[" with "") replace "]" with "" fun 
+				resolveScopes (str) = if (str contains ",") str splitBy ',' else str splitBy 
+				' ' 
+				--- 
+				vars.uidList match { 
+				case is Null -> [] 
+				case str: "" -> [] 
+				case str is String -> resolveScopes(removeBrackets(str)) 
+				else -> [] } 
+				]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+
+				<http-policy:execute-next />
+			<!-- <logger level="INFO" message="#[attributes.headers.uid]" />
+			<logger level="INFO" message="#[isEmpty(vars.uidList)]" />
+			<logger level="INFO" message="#[(isEmpty(vars.uidList) == false) and ((vars.uidList contains(authentication.properties.claims.uid default '')) 
+					or (vars.uidList contains(attributes.headers.uid default '')))]" /> -->
+
+				<choice>
+					<when
+						expression="#[(isEmpty(vars.uidList) == false) and ((vars.uidList contains(authentication.properties.claims.uid default '')) 
+					or (vars.uidList contains(attributes.headers.uid default '')))]">
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun maskData(obj) = obj match {
+    case is Null -> null
+    case is Array -> obj map maskData($)
+    case is Object -> obj mapObject ((v,k)-> (k): if(vars.maskingSelectorsList contains (k as String))
+                                                     maskData("***")
+                                                    else maskData(v)
+    )
+    else -> obj
+}
+---
+maskData(payload)]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+
+				<error-handler>
+					<on-error-propagate logException="true">
+						<http-transform:set-response
+							statusCode="500">
+							<http-transform:body>#[
+								{{#if isWsdlEndpoint}}
+								output
+								application/xml --- Soap::clientErrorMessage(payload,
+								'$(error.description)')
+								{{else}}
+								output application/json ---
+								{"error": "$(error.description)"}
+								{{/if}}
+								]
+							</http-transform:body>
+						</http-transform:set-response>
+					</on-error-propagate>
+				</error-handler>
+			</try>
+		</http-policy:source>
+
+
+	</http-policy:proxy>
 </mule>

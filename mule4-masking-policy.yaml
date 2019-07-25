@@ -8,4 +8,17 @@ encryptionSupported: false
 standalone: true
 requiredCharacteristics: []
 providedCharacteristics: []
-configuration: []
+configuration: 
+  - propertyName: maskingSelectorsList
+    name: List of selectors
+    description: List of fields to be masked, comma separated
+    type: string
+    allowMultiple: true
+    optional: true
+    defaultValue: ssn,dob
+  - propertyName: exemptedUsers
+    name: List of users to be exempted
+    description: Dataweave List of users to be excluded
+    type: string
+    allowMultiple: true
+    optional: true
